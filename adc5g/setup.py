@@ -8,5 +8,7 @@ setup(name = 'adc5g',
       url = "https://github.com/jack-h/adc_tools",
       requires    = ['numpy', 'corr'],
       provides    = ['adc5g'],
+      package_dir = {'adc5g':'src'},
+      packages    = ['adc5g'],
 )
 
