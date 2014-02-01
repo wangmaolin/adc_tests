@@ -220,7 +220,9 @@ def find_best_delay(d,clk=625.,ref_clk=200.,verbose=False,offset=0,tolerance=Non
                 if verbose: print "    glitches after eye: %d"%glitches_after_eye
                 break
             if (d[bit,delay] == 0) and (delay==(n_taps-1)):
-                raise Exception("Couldn't find end of eye")
+                print "Couldn't find end of eye, choosing half cycle from sys start"
+                eye_end = int(eye_start + taps_per_cycle)
+                glitches_after_eye = 0
         # Find the middle of the eye
         eye_centre = eye_start + (eye_end - eye_start)/2.
         if verbose: print "  EYE CENTRE at %.1f"%eye_centre
@@ -253,6 +255,7 @@ def count_bit_glitches(d,bit):
     last_index = None
     for i in range(len(d)-SPACING):
         if i%SPACING==0:
+            #print "bit %d"%bit, data[i:i+SPACING]
             if data[i:i+SPACING].sum() != 1:
                 glitches += 1
         if data[i]==1:
@@ -261,14 +264,14 @@ def count_bit_glitches(d,bit):
             last_index = i
     return glitches
 
-def use_strobe_test(r):
-    set_spi_register(r,0,0x05+0x80,1)
+def use_strobe_test(r,zdok):
+    set_spi_register(r,zdok,0x05+0x80,1)
 
-def use_counter_test(r):
-    set_spi_register(r,0,0x05+0x80,0)
+def use_counter_test(r,zdok):
+    set_spi_register(r,zdok,0x05+0x80,0)
 
-def get_glitches_per_bit(r,zdok,delays=32,bits=8,cores=4,verbose=False):
-    use_strobe_test(r)
+def get_glitches_per_bit(r,zdok,snaps=['snapshot_adc0'],delays=32,bits=8,cores=4,verbose=False):
+    use_strobe_test(r,zdok)
     set_test_mode(r,zdok)
     sync_adc(r)
     glitches = np.zeros([cores,bits,delays],dtype=int)
@@ -276,7 +279,7 @@ def get_glitches_per_bit(r,zdok,delays=32,bits=8,cores=4,verbose=False):
         if verbose: print "setting delay %d"%(delay)
         for core in range(cores):
             set_io_delay(r,zdok,core,delay)
-        test_vec = np.array(get_test_vector(r, ['snapshot_adc0']))
+        test_vec = np.array(get_test_vector(r,snaps))
         for core in range(cores):
             for bit in range(bits):
                 glitches[core,bit,delay] = count_bit_glitches(test_vec[core],bit)
@@ -288,14 +291,15 @@ def get_glitches_per_bit(r,zdok,delays=32,bits=8,cores=4,verbose=False):
                 for bit in range(bits):
                     print "%4d"%glitches[core,bit,delay],
                 print "TOTAL %d"%glitches.sum(axis=1)[core,delay]
+    unset_test_mode(r,zdok)
     return glitches
 
-def calibrate_all_delays(r,zdok,verbosity=1):
+def calibrate_all_delays(r,zdok,snaps=['snapshot_adc0'],verbosity=1):
     """
     Put an ADC in stobe test mode, find the glitches per bit per delay,
     find the optimum delays, and load them
     """
-    glitches = get_glitches_per_bit(r,zdok,verbose=(verbosity>1))
+    glitches = get_glitches_per_bit(r,zdok,snaps=snaps,verbose=(verbosity>1))
     cores, bits, taps = glitches.shape
     best_delay = np.zeros([cores,bits], dtype=int)
     for core in range(cores):
