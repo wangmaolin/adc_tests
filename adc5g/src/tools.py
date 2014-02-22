@@ -56,7 +56,11 @@ def get_test_vector(roach, snap_names, bitwidth=8, man_trig=True, wait_period=2)
     return data_out
 
 
-def set_test_mode(roach, zdok_n):
+def set_test_mode(roach, zdok_n,counter=True):
+    if counter:
+        use_counter_test(roach, zdok_n)
+    else:
+        use_strobe_test(roach, zdok_n)
     orig_control = get_spi_control(roach, zdok_n)
     if hasattr(roach, "adc5g_control"):
         roach.adc5g_control[zdok_n] = orig_control
@@ -104,25 +108,35 @@ def calibrate_mmcm_phase(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, w
     phase and finds total number of glitchss in the test vector ramp 
     per core. It then finds the least glitchy phase step and sets it.
     """
+    set_test_mode(roach, zdok_n, counter=True)
+    sync_adc(roach)
     glitches_per_ps = []
+    #start off by decrementing the mmcm right back to the beginning
+    print "decrementing mmcm to start"
+    for ps in range(ps_range):
+        inc_mmcm_phase(roach,zdok_n,inc=0)
     for ps in range(ps_range):
         core_a, core_c, core_b, core_d = get_test_vector(roach, snap_names, man_trig=man_trig, wait_period=wait_period)
         glitches = total_glitches(core_a, 8) + total_glitches(core_c, 8) + \
             total_glitches(core_b, 8) + total_glitches(core_d, 8)
         glitches_per_ps.append(glitches)
         inc_mmcm_phase(roach, zdok_n)
+    unset_test_mode(roach, zdok_n)
     zero_glitches = [gl==0 for gl in glitches_per_ps]
     n_zero = 0
     longest_min = None
     while True:
         try:
             rising  = zero_glitches.index(True, n_zero)
+            print "rising, nzero", rising, n_zero
             n_zero  = rising + 1
             falling = zero_glitches.index(False, n_zero)
+            print "falling, nzero", falling, n_zero
             n_zero  = falling + 1
             min_len = falling - rising
             if min_len > longest_min:
                 longest_min = min_len
+                print "  longest_min",longest_min
                 optimal_ps = rising + int((falling-rising)/2)
         except ValueError:
             break
@@ -147,7 +161,7 @@ def get_histogram(roach, zdok_n, core, fmt="hist_{zdok_n}_count_{core}", size=25
     counts = unpack('>{}Q'.format(size), roach.read(fmt.format(zdok_n=zdok_n, core=core), size*8))
     return counts[size/2:] + counts[:size/2]
 
-def find_best_delay(d,clk=625.,ref_clk=200.,verbose=False,offset=0,tolerance=None):
+def find_best_delay(d,clk=625.,ref_clk=200.,verbose=False,offset=0,tolerance=None,reference=None):
     '''
     A method to set the best bitwise delays for an input data bus. We assume that all the inputs
     are approximately aligned to begin with. I.e. if the input bus is 8 bits, we assume that the relative delays
@@ -181,10 +195,13 @@ def find_best_delay(d,clk=625.,ref_clk=200.,verbose=False,offset=0,tolerance=Non
     if verbose: print "tap_delay: %.1f ps"%(tap_delay*1e6)
     taps_per_cycle = (1./clk)/tap_delay/2. #This gives the number of taps in a complete clock cycle (1/2 because data is DDR)
     if verbose: print "taps_per_cycle: %.1f"%taps_per_cycle
-    if tolerance is None:
-        search_start_point = int(taps_per_cycle*(offset + 0.5))
+    if reference is None:
+        if tolerance is None:
+            search_start_point = int(taps_per_cycle*(offset + 0.5))
+        else:
+            search_start_point = int(taps_per_cycle*offset + tolerance)
     else:
-        search_start_point = int(taps_per_cycle*offset + tolerance)
+        search_start_point = reference - int(taps_per_cycle)
     eye_centres = np.zeros(n_bits,dtype=int)
     for bit in range(n_bits):
         if verbose: print "Starting search for bit %d eye at tap %d"%(bit,search_start_point)
@@ -271,8 +288,7 @@ def use_counter_test(r,zdok):
     set_spi_register(r,zdok,0x05+0x80,0)
 
 def get_glitches_per_bit(r,zdok,snaps=['snapshot_adc0'],delays=32,bits=8,cores=4,verbose=False):
-    use_strobe_test(r,zdok)
-    set_test_mode(r,zdok)
+    set_test_mode(r,zdok,counter=False)
     sync_adc(r)
     glitches = np.zeros([cores,bits,delays],dtype=int)
     for delay in range(delays):
@@ -302,8 +318,11 @@ def calibrate_all_delays(r,zdok,snaps=['snapshot_adc0'],verbosity=1):
     glitches = get_glitches_per_bit(r,zdok,snaps=snaps,verbose=(verbosity>1))
     cores, bits, taps = glitches.shape
     best_delay = np.zeros([cores,bits], dtype=int)
-    for core in range(cores):
-        best_delay[core] = find_best_delay(glitches[core],verbose=(verbosity>2))
+    # get the delay for core 0, and then use this as a reference for the other cores. This (should) prevent
+    # cores getting a clock cycle out of sync
+    best_delay[0] = find_best_delay(glitches[0],verbose=(verbosity>2),reference=None)
+    for core in range(1,cores):
+        best_delay[core] = find_best_delay(glitches[core],verbose=(verbosity>2),reference=best_delay[0,0])
     set_adc_iodelays(r,zdok,best_delay,verbose=(verbosity>0))
     return best_delay
 
@@ -315,4 +334,4 @@ def set_adc_iodelays(r,zdok,delays,verbose=False):
     for core in range(cores):
         if verbose: print "setting core %d delays"%core, delays[core]
         for bit in range(bits):
-            set_io_delay(r,0,core,delays[core,bit],bit=bit)
+            set_io_delay(r,zdok,core,delays[core,bit],bit=bit)
