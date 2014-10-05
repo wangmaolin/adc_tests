@@ -37,6 +37,8 @@ if __name__ == '__main__':
     p.set_description(__doc__)
     p.add_option('-p', '--skip_prog', dest='prog_fpga',action='store_false', default=True,
         help='Skip FPGA programming (assumes already programmed).  Default: program the FPGAs')
+    p.add_option('-l', '--load', dest='load',type='string', default=None,
+        help='Load existing ogp set. Use this flag to pass an ogp filename')
     #p.add_option('-e', '--skip_eq', dest='prog_eq',action='store_false', default=True, 
     #    help='Skip configuration of the equaliser in the F engines.  Default: set the EQ according to config file.')
     p.add_option('-v', '--verbosity', dest='verbosity',type='int', default=0,
@@ -82,24 +84,31 @@ if __name__ == '__main__':
         adc.calibrate_all_delays(r,0,snaps=['snapshot_adc0'],verbosity=opts.verbosity)
         #adc.calibrate_all_delays(r,1,snaps=['snapshot_adc1'],verbosity=opts.verbosity)
 
-    print 'clearing OGP'
-    rww_tools.clear_ogp()
-    print 'sleeping for 5s'
-    time.sleep(5)
+    if opts.load is None:
+       print 'clearing OGP'
+       rww_tools.clear_ogp()
+       print 'sleeping for 5s'
+       time.sleep(5)
 
-    #Do the calibration
-    print 'doing calibration'
-    ogp, sinad = rww_tools.dosnap(fr=opts.testfreq,name=FNAME,rpt=opts.n_trials,donot_clear=False)
+       #Do the calibration
+       print 'doing calibration'
+       ogp, sinad = rww_tools.dosnap(fr=opts.testfreq,name=FNAME,rpt=opts.n_trials,donot_clear=False)
 
-    ogp = ogp[3:]
-    print 'OGP:',ogp
-    print 'SINAD:',sinad
+       ogp = ogp[3:]
+       print 'OGP:',ogp
+       print 'SINAD:',sinad
 
-    np.savetxt('ogp',ogp,fmt='%8.4f')
+       time_str = str(int(time.time()))
+       ogp_file = 'ogp_%s'%time_str
+       np.savetxt(ogp_file,ogp,fmt='%8.4f')
 
-    print 'Setting ogp'
-    rww_tools.set_ogp('ogp')
-    print 'done'
+       print 'Setting ogp'
+       rww_tools.set_ogp(ogp_file)
+       print 'done'
+    else:
+       print 'Setting ogp'
+       rww_tools.set_ogp(opts.load)
+       print 'done'
 
 
     exit()
