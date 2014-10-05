@@ -1,1 +1,17 @@
 *.swp
+# Compiled Object files
+*.pyc
+
+# Emacs back-up files
+*~
+
+# Documents, plots, and data
+*.pdf
+*.txt
+*.dat
+
+# Ignore Python setuptools junk
+*.egg-info/
+
+# Ignore og_from_noise output
+*.noise

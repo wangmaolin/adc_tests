@@ -34,9 +34,14 @@ which can be used to detect these glitches. The phase-relation of the
 input/capture clocks can then be adjusted until these glitches disappear. 
 The 'adc5g' package provides a function for doing so:
 ```python
-import adc5g
-optimal_ps_0, glitches_0 = adc5g.calibrate_mmcm_phase(roach, 0, ['raw_0'])
-optimal_ps_1, glitches_1 = adc5g.calibrate_mmcm_phase(roach, 1, ['raw_1'])
+from adc5g import *
+set_test_mode(roach, 0)
+set_test_mode(roach, 1)
+sync_adc(roach)
+opt0, glitches0 = calibrate_mmcm_phase(roach, 0, ['scope_raw_0_snap',])
+opt1, glitches1 = calibrate_mmcm_phase(roach, 1, ['scope_raw_1_snap',])
+unset_test_mode(roach, 0)
+unset_test_mode(roach, 1)
 ```
 The calibration steps through all 56 phases and attempts to find the 
 optimal one, i.e. the one with zero glitches furthest away from the peak. 
@@ -50,7 +55,7 @@ command with `snap_name` being the name of the snapshot block in your
 design:
 ```python
 import numpy
-raw = numpy.array(adc5g.get_snapshot(roach, snap_name)) - 128
+raw = numpy.array(adc5g.get_snapshot(roach, snap_name))
 ```
 If you are using the digicom bof files provided in the 'boffiles' 
 directory then `snap_name="raw_%z"%z` where `z` is the ZDOK number 
