@@ -11,6 +11,10 @@ from spi import (
     set_spi_register,
     )
 import numpy as np
+from ami import helpers
+import logging
+
+logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
 def total_glitches(core, bitwidth=8):
     ramp_max = 2**bitwidth - 1
@@ -192,9 +196,9 @@ def find_best_delay(d,clk=625.,ref_clk=200.,verbose=False,offset=0,tolerance=Non
     '''
     n_bits, n_taps = d.shape
     tap_delay = 1./ref_clk/float(n_taps)/2. #78ps for 200 MHz reference
-    if verbose: print "tap_delay: %.1f ps"%(tap_delay*1e6)
+    logger.debug("tap_delay: %.1f ps"%(tap_delay*1e6))
     taps_per_cycle = (1./clk)/tap_delay/2. #This gives the number of taps in a complete clock cycle (1/2 because data is DDR)
-    if verbose: print "taps_per_cycle: %.1f"%taps_per_cycle
+    logger.debug("taps_per_cycle: %.1f"%taps_per_cycle)
     if reference is None:
         if tolerance is None:
             search_start_point = int(taps_per_cycle*(offset + 0.5))
@@ -202,54 +206,57 @@ def find_best_delay(d,clk=625.,ref_clk=200.,verbose=False,offset=0,tolerance=Non
             search_start_point = int(taps_per_cycle*offset + tolerance)
     else:
         search_start_point = reference - int(taps_per_cycle)
+    # don't start at negative!
+    search_start_point = max(0,search_start_point)
     eye_centres = np.zeros(n_bits,dtype=int)
     for bit in range(n_bits):
-        if verbose: print "Starting search for bit %d eye at tap %d"%(bit,search_start_point)
+        logger.debug("Starting search for bit %d eye at tap %d"%(bit,search_start_point))
         for delay in range(search_start_point,n_taps):
             if d[bit,delay] != 0:
                 #we have found the glitchy area we were looking for
                 #this is where we will start our search for the start of the eye
                 first_glitch = delay
-                if verbose: print "  found first glitch at %d"%first_glitch
+                logger.debug("found first glitch at %d"%first_glitch)
                 break
             if (d[bit,delay] == 0) and (delay==(n_taps-1)):
-                raise Exception("Couldn't find first glitch")
+                raise Exception("  Couldn't find first glitch")
         for delay in range(first_glitch,n_taps):
             if np.all(d[bit,delay:delay+3] == 0): #Check for runs of 3 zeros (sometimes even outside the eye there will be a delay with no glitches)
                 #we have found the start of the eye
                 eye_start = delay
-                if verbose: print "  found eye start at %d"%eye_start
+                logger.debug("  found eye start at %d"%eye_start)
                 #record the glitches one tap earlier to help decide which of the
                 #two best taps to use if the number of "good" delays is even
                 glitches_before_eye = d[bit,delay-1]
-                if verbose: print "    glitches before eye: %d"%glitches_before_eye
+                logger.debug("    glitches before eye: %d"%glitches_before_eye)
                 break
             if (d[bit,delay] != 0) and (delay==(n_taps-4)):
+                logger.critical("Couldn't find start of eye!")
                 raise Exception("Couldn't find start of eye")
         for delay in range(eye_start,n_taps):
             if d[bit,delay] != 0:
                 #we have found the end of the eye
                 eye_end = delay-1
-                if verbose: print "  found eye end at %d"%eye_end
+                logger.debug("  found eye end at %d"%eye_end)
                 #record the glitches one tap after the eye closes to help decide which of the
                 #two best taps to use if the number of "good" delays is even
                 glitches_after_eye = d[bit,delay]
-                if verbose: print "    glitches after eye: %d"%glitches_after_eye
+                logger.debug("    glitches after eye: %d"%glitches_after_eye)
                 break
             if (d[bit,delay] == 0) and (delay==(n_taps-1)):
-                print "Couldn't find end of eye, choosing half cycle from sys start"
+                logger.debug("Couldn't find end of eye, choosing half cycle from sys start")
                 eye_end = int(eye_start + taps_per_cycle)
                 glitches_after_eye = 0
         # Find the middle of the eye
         eye_centre = eye_start + (eye_end - eye_start)/2.
-        if verbose: print "  EYE CENTRE at %.1f"%eye_centre
+        logger.debug("  EYE CENTRE at %.1f"%eye_centre)
         # tie break the non integer case
         if eye_centre % 1 != 0:
             if glitches_after_eye >= glitches_before_eye:
                 eye_centre = np.floor(eye_centre)
             else:
                 eye_centre = np.ceil(eye_centre)
-            if verbose: print "    TIEBREAK: EYE CENTRE at %d"%eye_centre
+            logger.debug("    TIEBREAK: EYE CENTRE at %d"%eye_centre)
         eye_centres[bit] = int(eye_centre)
         if bit == 0:
             #If this is the first bit, use it to define the reference point about which we search for
@@ -257,7 +264,7 @@ def find_best_delay(d,clk=625.,ref_clk=200.,verbose=False,offset=0,tolerance=Non
             search_start_point = eye_centres[0] - int(taps_per_cycle)
             if search_start_point < 0:
                 search_start_point = 0
-            if verbose: print "  NEW START SEARCH REFERENCE POINT IS %d"%search_start_point
+            logger.debug("  NEW START SEARCH REFERENCE POINT IS %d"%search_start_point)
     return eye_centres
 
 def count_bit_glitches(d,bit):
@@ -292,7 +299,7 @@ def get_glitches_per_bit(r,zdok,snaps=['snapshot_adc0'],delays=32,bits=8,cores=4
     sync_adc(r)
     glitches = np.zeros([cores,bits,delays],dtype=int)
     for delay in range(delays):
-        if verbose: print "setting delay %d"%(delay)
+        logger.debug("setting delay %d"%(delay))
         for core in range(cores):
             set_io_delay(r,zdok,core,delay)
         test_vec = np.array(get_test_vector(r,snaps))
@@ -301,12 +308,14 @@ def get_glitches_per_bit(r,zdok,snaps=['snapshot_adc0'],delays=32,bits=8,cores=4
                 glitches[core,bit,delay] = count_bit_glitches(test_vec[core],bit)
     if verbose:
         for core in range(cores):
-            print "##### GLITCHES FOR CORE %d BY IODELAY #####"%core
+            logger.debug("##### GLITCHES FOR CORE %d BY IODELAY #####"%core)
+            string = ''
             for delay in range(delays):
-                print "%2d:"%delay,
+                string += "%2d:"%delay,
                 for bit in range(bits):
-                    print "%4d"%glitches[core,bit,delay],
-                print "TOTAL %d"%glitches.sum(axis=1)[core,delay]
+                    string += "%4d"%glitches[core,bit,delay],
+                string += "TOTAL %d"%glitches.sum(axis=1)[core,delay]
+            logger.debug(string)
     unset_test_mode(r,zdok)
     return glitches
 
@@ -332,6 +341,6 @@ def set_adc_iodelays(r,zdok,delays,verbose=False):
     """
     cores, bits = delays.shape
     for core in range(cores):
-        if verbose: print "setting core %d delays"%core, delays[core]
+        logger.info("setting adc %d core %d delays: %s"%(zdok, core, str(delays[core])))
         for bit in range(bits):
             set_io_delay(r,zdok,core,delays[core,bit],bit=bit)
