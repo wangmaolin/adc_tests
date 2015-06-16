@@ -11,10 +11,11 @@ from spi import (
     set_spi_register,
     )
 import numpy as np
-from ami import helpers
 import logging
+import struct
 
-logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
+logger = logging.getLogger(__name__)
+
 
 def total_glitches(core, bitwidth=8):
     ramp_max = 2**bitwidth - 1
@@ -31,11 +32,26 @@ def get_snapshot(roach, snap_name, bitwidth=8, man_trig=True, wait_period=2):
     Reads a one-channel snapshot off the given 
     ROACH and returns the time-ordered samples.
     """
+    # manually enable, trigger, then disable the snap block
+    roach.write_int('DC_EN', 1)
+    roach.write_int('raw_adc_trig', 0)
+    roach.write_int('raw_adc_trig', 1)
+    roach.write_int('raw_adc_trig', 0)
+    roach.write_int('DC_EN', 0)
 
-    grab = roach.snapshot_get(snap_name, man_trig=man_trig, wait_period=wait_period)
-    data = unpack('%ib' %grab['length'], grab['data'])
+    SNAP_DEPTH = 2**11
+    N_SNAPS = 4
+    PARALLEL_WORDS = 4
+    TOT_WORDS = PARALLEL_WORDS * N_SNAPS * SNAP_DEPTH
 
-    return list(d for d in data)
+    data = np.zeros(TOT_WORDS, dtype=int)
+
+    for i in range(N_SNAPS):
+        d = struct.unpack('>%db'%(SNAP_DEPTH*PARALLEL_WORDS), roach.read(snap_name+'_SAMP_%d_Shared_BRAM'%i, PARALLEL_WORDS*SNAP_DEPTH))
+        for j in range(PARALLEL_WORDS):
+            data[(i*PARALLEL_WORDS)+j::16] = d[j::4]
+
+    return list(data)
 
 
 def get_test_vector(roach, snap_names, bitwidth=8, man_trig=True, wait_period=2):
@@ -78,10 +94,14 @@ def set_test_mode(roach, zdok_n,counter=True):
 
 
 def unset_test_mode(roach, zdok_n):
-    try:
-        set_spi_control(roach, zdok_n, **roach.adc5g_control[zdok_n])
-    except AttributeError:
-        raise Exception, "Please use set_test_mode before trying to unset"
+    #try:
+    orig_control = get_spi_control(roach, 0)#zdok_n) #sometimes the zdok 1 read interface doesn't work (really worth figuring out why)
+    new_control = orig_control.copy()
+    new_control['test'] = 0
+    set_spi_control(roach, zdok_n, **new_control)
+    #set_spi_control(roach, zdok_n, **roach.adc5g_control[zdok_n])
+    #except AttributeError:
+    #    raise Exception, "Please use set_test_mode before trying to unset"
 
 
 def sync_adc(roach, zdok_0=True, zdok_1=True):
@@ -106,7 +126,15 @@ def get_core_offsets(r,snap_names=['snapshot_adc0'],cores=4):
     offset = np.min(s) - s #these are the relative arrival times. i.e. -1 means arrival is one clock too soon
     return offset
 
-
+def check_for_glitches(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, wait_period=2, ps_range=56):
+    set_test_mode(roach, zdok_n, counter=True)
+    sync_adc(roach)
+    core_a, core_c, core_b, core_d = get_test_vector(roach, snap_names, man_trig=man_trig, wait_period=wait_period)
+    glitches = total_glitches(core_a, 8) + total_glitches(core_c, 8) + \
+        total_glitches(core_b, 8) + total_glitches(core_d, 8)
+    unset_test_mode(roach, zdok_n)
+    sync_adc(roach)
+    return glitches
 
 def calibrate_mmcm_phase(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, wait_period=2, ps_range=56):
     """
@@ -117,10 +145,16 @@ def calibrate_mmcm_phase(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, w
     set_test_mode(roach, zdok_n, counter=True)
     sync_adc(roach)
     glitches_per_ps = []
-    #start off by decrementing the mmcm right back to the beginning
-    print "decrementing mmcm to start"
+    # shift until we get to some bad data
     for ps in range(ps_range):
-        inc_mmcm_phase(roach,zdok_n,inc=0)
+        core_a, core_c, core_b, core_d = get_test_vector(roach, snap_names, man_trig=man_trig, wait_period=wait_period)
+        glitches = total_glitches(core_a, 8) + total_glitches(core_c, 8) + \
+            total_glitches(core_b, 8) + total_glitches(core_d, 8)
+        if glitches > 0:
+            print 'breaking at ps:%d with %d glitches'%(ps,glitches)
+            break
+        inc_mmcm_phase(roach, zdok_n)
+    
     for ps in range(ps_range):
         core_a, core_c, core_b, core_d = get_test_vector(roach, snap_names, man_trig=man_trig, wait_period=wait_period)
         glitches = total_glitches(core_a, 8) + total_glitches(core_c, 8) + \
@@ -134,24 +168,28 @@ def calibrate_mmcm_phase(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, w
     while True:
         try:
             rising  = zero_glitches.index(True, n_zero)
-            print "rising, nzero", rising, n_zero
-            n_zero  = rising + 1
-            falling = zero_glitches.index(False, n_zero)
-            print "falling, nzero", falling, n_zero
-            n_zero  = falling + 1
-            min_len = falling - rising
-            if min_len > longest_min:
-                longest_min = min_len
-                print "  longest_min",longest_min
-                optimal_ps = rising + int((falling-rising)/2)
         except ValueError:
             break
+        print "rising, nzero", rising, n_zero
+        n_zero  = rising + 1
+        try:
+            falling = zero_glitches.index(False, n_zero)
+        except ValueError:
+            falling = len(zero_glitches) - 1
+        print "falling, nzero", falling, n_zero
+        n_zero  = falling + 1
+        min_len = falling - rising
+        if min_len > longest_min:
+            longest_min = min_len
+            print "  longest_min",longest_min
+            optimal_ps = rising + int((falling-rising)/2)
     if longest_min==None:
         #raise ValueError("No optimal MMCM phase found!")
         return None, glitches_per_ps
     else:
-        for ps in range(optimal_ps):
-            inc_mmcm_phase(roach, zdok_n)
+        # decrement MMCM back to optimal place
+        for ps in range(ps_range - optimal_ps):
+            inc_mmcm_phase(roach, zdok_n, inc=0)
         return optimal_ps, glitches_per_ps
 
 
