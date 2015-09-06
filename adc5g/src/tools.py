@@ -65,9 +65,7 @@ def set_test_mode(roach, zdok_n,counter=True):
         use_counter_test(roach, zdok_n)
     else:
         use_strobe_test(roach, zdok_n)
-    if zdok_n == 1:
-        logger.warning("DIRTY HACK ALERT: Reading control reg from ZDOK 0 to set ZDOK 1")
-    orig_control = get_spi_control(roach, 0)#zdok_n) #sometimes the zdok 1 read interface doesn't work (really worth figuring out why)
+    orig_control = get_spi_control(roach, zdok_n)
     if hasattr(roach, "adc5g_control"):
         roach.adc5g_control[zdok_n] = orig_control
     else:
