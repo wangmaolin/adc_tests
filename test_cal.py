@@ -20,7 +20,7 @@ r.progdev(BOFFILE)
 
 adc5g.set_test_mode(r, 0, counter=False)
 adc5g.sync_adc(r)
-adc5g.calibrate_all_delays(r, 0, snaps=['snap'], verbosity=5)
+adc5g.calibrate_all_delays(r, 0, snaps=[SNAPNAME], verbosity=5)
 #adc5g.calibrate_mmcm_phase(r, 0, ['snap'])
 #adc5g.unset_test_mode(r, 0)
 #a, b, c, d = adc5g.get_test_vector(r, ['snap'])
