@@ -11,10 +11,16 @@ from spi import (
     set_spi_register,
     )
 import numpy as np
-from ami import helpers
 import logging
+import sys
 
-logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+sh = logging.StreamHandler(stream=sys.stdout)
+sh.setLevel(logging.DEBUG)
+sh.setFormatter(logging.Formatter('%(asctime)s - %(name)20s - %(levelname)s - %(message)s'))
+logger.addHandler(sh)
+logger.info('adc5g imported')
 
 def total_glitches(core, bitwidth=8):
     ramp_max = 2**bitwidth - 1
@@ -117,10 +123,16 @@ def calibrate_mmcm_phase(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, w
     set_test_mode(roach, zdok_n, counter=True)
     sync_adc(roach)
     glitches_per_ps = []
-    #start off by decrementing the mmcm right back to the beginning
-    print "decrementing mmcm to start"
+    # shift until we get to some bad data
     for ps in range(ps_range):
-        inc_mmcm_phase(roach,zdok_n,inc=0)
+        core_a, core_c, core_b, core_d = get_test_vector(roach, snap_names, man_trig=man_trig, wait_period=wait_period)
+        glitches = total_glitches(core_a, 8) + total_glitches(core_c, 8) + \
+            total_glitches(core_b, 8) + total_glitches(core_d, 8)
+        if glitches > 0:
+            print 'breaking at ps:%d with %d glitches'%(ps,glitches)
+            break
+        inc_mmcm_phase(roach, zdok_n)
+
     for ps in range(ps_range):
         core_a, core_c, core_b, core_d = get_test_vector(roach, snap_names, man_trig=man_trig, wait_period=wait_period)
         glitches = total_glitches(core_a, 8) + total_glitches(core_c, 8) + \
@@ -134,24 +146,28 @@ def calibrate_mmcm_phase(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, w
     while True:
         try:
             rising  = zero_glitches.index(True, n_zero)
-            print "rising, nzero", rising, n_zero
-            n_zero  = rising + 1
-            falling = zero_glitches.index(False, n_zero)
-            print "falling, nzero", falling, n_zero
-            n_zero  = falling + 1
-            min_len = falling - rising
-            if min_len > longest_min:
-                longest_min = min_len
-                print "  longest_min",longest_min
-                optimal_ps = rising + int((falling-rising)/2)
         except ValueError:
             break
+        print "rising, nzero", rising, n_zero
+        n_zero  = rising + 1
+        try:
+            falling = zero_glitches.index(False, n_zero)
+        except ValueError:
+            falling = len(zero_glitches) - 1
+        print "falling, nzero", falling, n_zero
+        n_zero  = falling + 1
+        min_len = falling - rising
+        if min_len > longest_min:
+            longest_min = min_len
+            print "  longest_min",longest_min
+            optimal_ps = rising + int((falling-rising)/2)
     if longest_min==None:
         #raise ValueError("No optimal MMCM phase found!")
         return None, glitches_per_ps
     else:
-        for ps in range(optimal_ps):
-            inc_mmcm_phase(roach, zdok_n)
+        # decrement MMCM back to optimal place
+        for ps in range(ps_range - optimal_ps):
+            inc_mmcm_phase(roach, zdok_n, inc=0)
         return optimal_ps, glitches_per_ps
 
 
@@ -311,13 +327,13 @@ def get_glitches_per_bit(r,zdok,snaps=['snapshot_adc0'],delays=32,bits=8,cores=4
     if verbose:
         for core in range(cores):
             logger.debug("##### GLITCHES FOR CORE %d BY IODELAY #####"%core)
-            string = ''
             for delay in range(delays):
-                string += "%2d:"%delay,
+                string = ''
+                string += "%2d:"%delay
                 for bit in range(bits):
-                    string += "%4d"%glitches[core,bit,delay],
-                string += "TOTAL %d"%glitches.sum(axis=1)[core,delay]
-            logger.debug(string)
+                    string += "%4d"%(glitches[core,bit,delay])
+                string += "TOTAL %d"%(glitches.sum(axis=1)[core,delay])
+                logger.debug(string)
     unset_test_mode(r,zdok)
     return glitches
 
