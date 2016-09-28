@@ -73,21 +73,17 @@ def set_test_mode(roach, zdok_n,counter=True):
         use_strobe_test(roach, zdok_n)
     if zdok_n == 1:
         logger.warning("DIRTY HACK ALERT: Reading control reg from ZDOK 0 to set ZDOK 1")
-    orig_control = get_spi_control(roach, 0)#zdok_n) #sometimes the zdok 1 read interface doesn't work (really worth figuring out why)
-    if hasattr(roach, "adc5g_control"):
-        roach.adc5g_control[zdok_n] = orig_control
-    else:
-        roach.adc5g_control = {zdok_n: orig_control}
-    new_control = orig_control.copy()
-    new_control['test'] = 1
-    set_spi_control(roach, zdok_n, **new_control)
+    control = get_spi_control(roach, 0)#zdok_n) #sometimes the zdok 1 read interface doesn't work (really worth figuring out why)
+    control['test'] = 1
+    set_spi_control(roach, zdok_n, **control)
 
 
 def unset_test_mode(roach, zdok_n):
-    try:
-        set_spi_control(roach, zdok_n, **roach.adc5g_control[zdok_n])
-    except AttributeError:
-        raise Exception, "Please use set_test_mode before trying to unset"
+    if zdok_n == 1:
+        logger.warning("DIRTY HACK ALERT: Reading control reg from ZDOK 0 to set ZDOK 1")
+    control = get_spi_control(roach, 0)#zdok_n) #sometimes the zdok 1 read interface doesn't work (really worth figuring out why)
+    control['test'] = 0
+    set_spi_control(roach, zdok_n, **control)
 
 
 def sync_adc(roach, zdok_0=True, zdok_1=True):
