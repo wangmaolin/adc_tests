@@ -114,6 +114,16 @@ def get_core_offsets(r,snap_names=['snapshot_adc0'],cores=4):
 
 
 
+def check_for_glitches(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, wait_period=2, ps_range=56):
+    set_test_mode(roach, zdok_n, counter=True)
+    sync_adc(roach)
+    core_a, core_c, core_b, core_d = get_test_vector(roach, snap_names, man_trig=man_trig, wait_period=wait_period)
+    glitches = total_glitches(core_a, 8) + total_glitches(core_c, 8) + \
+        total_glitches(core_b, 8) + total_glitches(core_d, 8)
+    unset_test_mode(roach, zdok_n)
+    sync_adc(roach)
+    return glitches
+ 
 def calibrate_mmcm_phase(roach, zdok_n, snap_names, bitwidth=8, man_trig=True, wait_period=2, ps_range=56):
     """
     This function steps through all 56 steps of the MMCM clk-to-out 
