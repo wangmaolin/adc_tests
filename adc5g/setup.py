@@ -10,5 +10,6 @@ setup(name = 'adc5g',
       provides    = ['adc5g'],
       package_dir = {'adc5g':'src'},
       packages    = ['adc5g'],
+      scripts     = ['scripts/calibrate_adc5g_mmcm.py'],
 )
 
