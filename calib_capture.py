@@ -167,16 +167,17 @@ class TestSnapshot(TestBase):
         TestBase.setUpClass()
         cls._raw = adc5g.get_snapshot(cls._roach, 'scope_raw_%d_snap' % cls._zdok_n)
 
-	print ""
-	print "========================================="
-	print "test signal Amp(min - max): " + str(0.5*(max(cls._raw)-min(cls._raw)))
-	print "========================================="
+    def test_output(self)
+        print ""
+        print "========================================="
+        print "test signal Amp(min - max): " + str(0.5*(max(self._raw)-min(self._raw)))
+        print "========================================="
 
-	print "output the snapshot"
-	snapoutput=open('snapshot','w')
-	for item in cls._raw:
-		snapoutput.write("%s\n" % item)
-	snapoutput.close()
+        print "output the snapshot"
+        snapoutput=open('snapshot','w')
+        for item in self._raw:
+            snapoutput.write("%s\n" % item)
+        snapoutput.close()
 
 
 ORDERED_TEST_CASES = [
