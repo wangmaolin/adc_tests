@@ -101,18 +101,18 @@ class TestCalibration(TestBase):
         print "calibration: 1 time"
         cls._optimal_phase, cls._glitches = adc5g.calibrate_mmcm_phase(
             cls._roach, cls._zdok_n, ['scope_raw_%d_snap' % cls._zdok_n])
-        
+
         count = 0
         while (cls._optimal_phase is None and count < 20):
             print "Re-program the FPGA"
             ret = cls._roach.progdev(cls._dut)
             print ret
-            
+
             print "calibration: ", count+2, " time"
             cls._optimal_phase, cls._glitches = adc5g.calibrate_mmcm_phase(
                 cls._roach, cls._zdok_n, ['scope_raw_%d_snap' % cls._zdok_n])
             count = count + 1
-            
+
 
     def test_optimal_solution_found(self):
         "test if calibration finds optimal MMCM phase"
@@ -165,15 +165,11 @@ class TestSnapshot(TestBase):
     @classmethod
     def setUpClass(cls):
         TestBase.setUpClass()
-        cls._sample_rate = cls._clk_rate * 2.
-        cls._tone_per = int(round(cls._sample_rate / cls._tone_freq))
         cls._raw = adc5g.get_snapshot(cls._roach, 'scope_raw_%d_snap' % cls._zdok_n)
-        'cls._raw = list(samp-128 for samp in cls._raw)'
 
 	print ""
 	print "========================================="
 	print "test signal Amp(min - max): " + str(0.5*(max(cls._raw)-min(cls._raw)))
-	print "test signal Amp: " + str(cls._amp)
 	print "========================================="
 
 	print "output the snapshot"
@@ -182,28 +178,6 @@ class TestSnapshot(TestBase):
 		snapoutput.write("%s\n" % item)
 	snapoutput.close()
 
-        cls._bias = (cls._raw[0] + cls._raw[cls._tone_per/2])/2.
-        cls._amp = sqrt((cls._raw[0]-cls._bias)**2 + (cls._raw[cls._tone_per/4]-cls._bias)**2)
-        cls._phase = atan2((cls._raw[0]-cls._bias)/cls._amp, (cls._raw[125]-cls._bias)/cls._amp)
-        cls._fit = list(cls._amp*sin(t*2*pi/cls._tone_per + cls._phase) + cls._bias \
-                        for t in range(len(cls._raw)))
-
-    def test_total_bias(self):
-        "check the overall bias of the signal"
-	print ""
-	print "test signal bias: " + str(self._bias)
-        self.assertLess(abs(self._bias), 5.)
-
-    def test_total_amplitude(self):
-        "check the amplitude of the signal"
-        'self.assertLess(abs(self._amp - self._tone_amp), 5.)'
-        
-    def test_total_noise(self):
-        "check the total noise level"
-        noise = list(self._raw[i]-self._fit[i] for i in range(len(self._raw)))
-        noise_lvl = sqrt(sum(nsamp**2 for nsamp in noise)/len(noise))
-        'self.assertLess(noise_lvl, 5.)'
-        
 
 ORDERED_TEST_CASES = [
     TestSetup,
