@@ -167,7 +167,7 @@ class TestSnapshot(TestBase):
         TestBase.setUpClass()
         cls._raw = adc5g.get_snapshot(cls._roach, 'scope_raw_%d_snap' % cls._zdok_n)
 
-    def test_output(self)
+    def test_output(self):
         print ""
         print "========================================="
         print "test signal Amp(min - max): " + str(0.5*(max(self._raw)-min(self._raw)))
