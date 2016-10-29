@@ -2,6 +2,7 @@ import sys
 import unittest
 from math import pi, sqrt, sin, atan2
 from optparse import OptionParser
+import time
 
 import adc5g
 try:
@@ -165,8 +166,27 @@ class TestSnapshot(TestBase):
     @classmethod
     def setUpClass(cls):
         TestBase.setUpClass()
-        cls._raw = adc5g.get_snapshot(cls._roach, 'scope_raw_%d_snap' % cls._zdok_n)
 
+	print 'disable'
+	self._roach.write_int('enable', 0)
+	self._roach.write_int('trig', 0)
+	time.sleep(2)
+
+	print 'reset'
+	self._roach.write_int('rst', 1)
+	time.sleep(2)
+        self._roach.write_int('rst', 0)
+	time.sleep(2)
+	self._roach.write_int('rst', 1)
+	time.sleep(2)
+
+	print 'enable'
+	self._roach.write_int('enable', 1)
+	self._roach.write_int('trig', 1)
+	time.sleep(2)
+
+        cls._raw = adc5g.get_snapshot(cls._roach, 'scope_raw_%d_snap' % cls._zdok_n)
+	
     def test_output(self):
         "test output snapshot"
         print ""
