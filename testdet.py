@@ -275,12 +275,31 @@ class TestDetect(TestBase):
     @classmethod
     def setUpClass(cls):
         TestBase.setUpClass()
+        cls._raw = adc5g.get_snapshot(cls._roach, 'scope_raw_%d_snap' % cls._zdok_n)
         
     def test_start_capture(self):
-       	"reset config detect logic"
-        self._roach.write_int('tv',self._tv)
-	print 'write detect threshold value'
-	print self._tv
+       	"determine the detection threshold"
+	#calculate background aveage
+	background=np.array(self._raw[0:8*336])
+	background=np.resize(background,(8,336))
+	background=np.average(background,axis=0)
+	imgraw=np.array(self._raw[0:48*336])
+	imgraw=np.resize(imgraw,(48,336))
+	#remove background aveage
+	imgsub=imgraw-background[None,:]
+	imgabs=np.absolute(imgsub)
+	linsum=np.sum(imgabs,axis=1)
+	#calculate background mean 
+	bgmean=np.mean(linsum)
+	#calculate background std 
+	bgstd=np.std(linsum)
+	#set threshold as 3*std
+	threshold=3*bgstd
+	print 'background linsum mean: ' + str(bgmean)
+	print 'background linsum std: ' + str(bgstd)
+        self._roach.write_int('tv',threshold)
+        #self._roach.write_int('tv',self._tv)
+	print 'write detect threshold value(3*bgstd): ' + str(threshold)
         self._roach.write_int('adc_enable',1)
 	print 'detect enable'
 

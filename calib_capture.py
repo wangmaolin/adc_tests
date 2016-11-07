@@ -1,4 +1,5 @@
 import sys
+import numpy as np
 import unittest
 from math import pi, sqrt, sin, atan2
 from optparse import OptionParser
@@ -170,7 +171,18 @@ class TestSnapshot(TestBase):
 	
     def test_output(self):
         "test output snapshot"
-	print self._raw
+	background=np.array(self._raw[0:8*336])
+	background=np.resize(background,(8,336))
+	background=np.average(background,axis=0)
+	imgraw=np.array(self._raw[0:48*336])
+	imgraw=np.resize(imgraw,(48,336))
+	imgsub=imgraw-background[None,:]
+	imgabs=np.absolute(imgsub)
+	linsum=np.sum(imgabs,axis=1)
+	bgmean=np.mean(linsum)
+	bgstd=np.std(linsum)
+	print bgmean
+	print bgstd
         print ""
         print "========================================="
         print "test signal Amp(min - max): " + str(0.5*(max(self._raw)-min(self._raw)))
