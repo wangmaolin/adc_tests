@@ -91,19 +91,67 @@ class TestBasics(TestBase):
         self.assertIn('raw_%d_ctrl' % self._zdok_n, self._devices)
         self.assertIn('raw_%d_status' % self._zdok_n, self._devices)
 
-
 class TestCalibration(TestBase):
 
     @classmethod
     def setUpClass(cls):
         TestBase.setUpClass()
-        cls._optimal_phase, cls._glitches = adc5g.calibrate_mmcm_phase(
-            cls._roach, cls._zdok_n, ['raw_%d' % cls._zdok_n])
+ 	adc5g.set_test_mode(cls._roach,0)
+        adc5g.set_test_mode(cls._roach,1)
 
+        #adc5g.set_test_mode(cls._roach,1)
+        print "\nSETTING SYN"
+        #adc5g.sync_adc(self._roach)
+       # cls._optimal_phase, cls._glitches = adc5g.calibrate_mmcm_phase(
+            #cls._roach, cls._zdok_n, ['scope_raw_%d_snap_bram' % cls._zdok_n])
+        #    cls._roach, cls._zdok_n, ['snap']) 
+        #BOFFILE = 'adc5g_test.bof'
+	BOFFILE ='adcethvfullv64zdk1_2015_Oct_09_1201.bof' #'adcethvfullv64_2015_Sep_09_0946.bof' #'adcethvfullv61_2015_Sep_02_1653.bof' #'adc5g_test_2014_Jul_21_2138.bof'#1649.bof' #'adc5g_test_rev2.bof'
+	ROACH = '192.168.100.182'  #182 or 2
+	#ROACH = '10.0.1.213'
+	SNAPNAME ='scope_raw_0_snap'
+
+	def br(x):
+	    return np.binary_repr(x, width=8)
+
+	r = corr.katcp_wrapper.FpgaClient(ROACH)
+	time.sleep(0.1)
+
+	#r.progdev(BOFFILE)
+
+	adc5g.set_test_mode(r, 0, counter=False)
+	adc5g.sync_adc(r)
+	adc5g.calibrate_all_delays(r, 0, snaps=[SNAPNAME], verbosity=5)
+#	adc5g.calibrate_mmcm_phase(r, 0, [SNAPNAME])
+
+	#adc5g.calibrate_mmcm_phase(r, 0, ['snap'])
+	adc5g.unset_test_mode(r, 0)
+	#a, b, c, d = adc5g.get_test_vector(r, ['snap'])
+	a, b, c, d = adc5g.get_test_vector(r, [SNAPNAME])
+	#x = adc5g.get_snapshot(r, 'scope_raw_0_snap')
+	#a = x[0::4]
+	#b = x[1::4]
+	#c = x[2::4]
+	#d = x[3::4]
+	
+	for i in range(32):
+	    print br(a[i]), br(b[i]), br(c[i]), br(d[i])
+
+#	for cn, core in enumerate([a,b,c,d]):
+#	    pylab.plot(np.array(core) & 0xf, label='%d'%cn)
+#	pylab.legend()
+	#pylab.show()
+#	adc5g.unset_test_mode(roach, 0)
+ #       adc5g.unset_test_mode(roach, 1)
+#	time.sleep(4)
+	print "\ntest finished"
+#	r.progdev(BOFFILE)
     def test_optimal_solution_found(self):
         "test if calibration finds optimal MMCM phase"
-        self.assertIsNotNone(self._optimal_phase)
-
+       	#self.assertIsNotNone(self._optimal_phase)
+	adc5g.unset_test_mode(roach, 0)
+        adc5g.unset_test_mode(roach, 1)
+        time.sleep(5)
 
 class TestInitialSPIControl(TestBase):
 
